@@ -1,0 +1,72 @@
+#!/bin/sh
+# https://iterm2.com/documentation-images.html
+# https://iterm2.com/documentation-escape-codes.html
+
+INLINE=1  # 0 = download file, 1 = show in terminal
+
+in_tmux() {  # https://github.com/tmux/tmux/wiki/FAQ
+    term="${TERM%%-*}"  # strip off "-256color" if present
+    [ "$term" = "screen" ] || [ "$term" = "tmux" ]
+}
+
+base64encode() {
+    if command -v base64 > /dev/null; then
+        base64 | tr -d '\r\n'
+    elif command -v uuencode > /dev/null; then
+        uuencode -m /dev/stdout | sed '1d;$d' | tr -d '\r\n'
+    else
+        return 1
+    fi
+}
+
+print_file() {
+    size="$(wc -c "$1" | cut -d' ' -f1)"
+    base64name="$(basename "$1" | tr -d '\r\n' | base64encode)"
+    printf 'name=%s;size=%s;inline=%s:' "$base64name" "$size" "$INLINE"
+    base64encode < "$1"
+}
+
+print_stdin() {
+    encoding="$(base64encode)"
+    padding="${encoding##*[!=]}"
+    size=$((3 * ${#encoding} / 4 - ${#padding}))
+    printf 'size=%s;inline=%s:%s' "$size" "$INLINE" "$encoding"
+}
+
+main() {
+    if [ "$#" -gt 1 ] || [ "$#" = 0 ] && [ -t 0 ]; then
+        echo "usage: $0 [<file>]" >&2 && exit 1
+    fi
+    if [ "$#" = 1 ] && [ ! -r "$1" ]; then
+        echo "file does not exist or is not readable: $1" >&2 && exit 1
+    fi
+    if ! echo "test" | base64encode > /dev/null; then
+        echo "base64 encoder not found" >&2 && exit 1
+    fi
+    if [ "$(basename "$0")" = "push" ]; then
+        INLINE=0
+    fi
+    if in_tmux; then
+        SHOW_HEIGHT="${SHOW_HEIGHT:-${SHOW_HEIGHT_TMUX:-22}}"
+        tput clear
+        printf '\033Ptmux;\033'
+    fi
+    printf '\033]1337;File='
+    if [ "$SHOW_HEIGHT" ]; then
+        printf 'height=%s;' "$SHOW_HEIGHT"
+    fi
+    if [ "$1" ]; then
+        print_file "$1"
+    else
+        print_stdin
+    fi
+    printf '\a'
+    if in_tmux; then
+        # shellcheck disable=SC1003
+        printf '\033\\'
+        printf '%256s' '' | tr ' ' '\n' | head -n "$((SHOW_HEIGHT - 1))"
+    fi
+    printf '\n'
+}
+
+main "$@"
