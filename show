@@ -35,7 +35,7 @@ print_stdin() {
 
 main() {
     if [ "$#" -gt 1 ] || [ "$#" = 0 ] && [ -t 0 ]; then
-        echo "usage: $0 [<file>]" >&2 && exit 1
+        echo "usage: $(basename "$0") [<file>]" >&2 && exit 1
     fi
     if [ "$#" = 1 ] && [ ! -r "$1" ]; then
         echo "file does not exist or is not readable: $1" >&2 && exit 1
@@ -48,11 +48,13 @@ main() {
     fi
     if in_tmux; then
         SHOW_HEIGHT="${SHOW_HEIGHT:-${SHOW_HEIGHT_TMUX:-22}}"
-        tput clear
+        if [ "$INLINE" = 1 ]; then
+            tput clear
+        fi
         printf '\033Ptmux;\033'
     fi
     printf '\033]1337;File='
-    if [ "$SHOW_HEIGHT" ]; then
+    if [ "$INLINE" = 1 ] && [ "$SHOW_HEIGHT" ]; then
         printf 'height=%s;' "$SHOW_HEIGHT"
     fi
     if [ "$1" ]; then
@@ -64,9 +66,14 @@ main() {
     if in_tmux; then
         # shellcheck disable=SC1003
         printf '\033\\'
-        printf '%256s' '' | tr ' ' '\n' | head -n "$((SHOW_HEIGHT - 1))"
     fi
-    printf '\n'
+    if [ "$INLINE" = 1 ]; then
+        if in_tmux; then
+            printf '%256s' '' | tr ' ' '\n' | head -n "$SHOW_HEIGHT"
+        else
+            printf '\n'
+        fi
+    fi
 }
 
 main "$@"
